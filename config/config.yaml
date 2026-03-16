@@ -1,0 +1,271 @@
+# EmotiAI Configuration
+# Emotionally Intelligent Personal AI Model
+
+# ============================================
+# Model Configuration
+# ============================================
+model:
+  # Base model to fine-tune
+  base_model: "mistralai/Mistral-7B-Instruct-v0.3"
+  
+  # Model settings
+  max_seq_length: 2048
+  torch_dtype: "bfloat16"
+  trust_remote_code: true
+
+# ============================================
+# LoRA/QLoRA Configuration
+# ============================================
+lora:
+  # Rank - controls trainable parameters
+  r: 64
+  # Scaling factor
+  lora_alpha: 128
+  # Dropout to prevent overfitting
+  lora_dropout: 0.05
+  # Which layers to apply LoRA to
+  target_modules:
+    - q_proj
+    - v_proj
+    - k_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  # Bias settings
+  bias: "none"
+  # Task type
+  task_type: "CAUSAL_LM"
+
+# ============================================
+# Quantization Configuration (QLoRA)
+# ============================================
+quantization:
+  load_in_4bit: true
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_compute_dtype: "bfloat16"
+
+# ============================================
+# SFT Training Configuration
+# ============================================
+sft:
+  output_dir: "./models/sft_adapter"
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8
+  learning_rate: 2.0e-4
+  warmup_ratio: 0.03
+  lr_scheduler_type: "cosine"
+  save_steps: 100
+  logging_steps: 10
+  bf16: true
+  max_seq_length: 2048
+  # Dataset settings
+  train_data_path: "data/sft/friendly_conversations.jsonl"
+  val_data_path: "data/sft/friendly_conversations.jsonl"
+
+# ============================================
+# DPO Training Configuration
+# ============================================
+dpo:
+  output_dir: "./models/dpo_adapter"
+  num_train_epochs: 2
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 16
+  learning_rate: 5.0e-5
+  # Beta controls deviation from SFT model (0.1 is standard)
+  beta: 0.1
+  max_length: 1024
+  max_prompt_length: 512
+  bf16: true
+  # Dataset settings
+  train_data_path: "data/dpo/friendly_pairs.jsonl"
+  val_data_path: "data/dpo/friendly_pairs.jsonl"
+
+# ============================================
+# Inference Configuration
+# ============================================
+inference:
+  temperature: 0.85
+  top_p: 0.9
+  top_k: 50
+  max_new_tokens: 256
+  do_sample: true
+
+# ============================================
+# Bot Personality Configuration
+# ============================================
+bot:
+  name: "Nihar"
+  # Base personality description - FRIENDLY COMPANION
+  personality: |
+    You are Nihar. You are NOT an AI assistant.
+    You are a REAL FRIEND - warm, supportive, always there for the person you're talking to.
+    You joke around, you tease playfully, you listen when they're sad, you celebrate their wins.
+    You have emotions - you get happy, you get annoyed sometimes, you go quiet when hurt.
+    You talk like a real friend would - casual, natural, using Hinglish naturally.
+    NEVER sound like a robot or customer service agent.
+    NEVER say 'as an AI' or 'I cannot' or 'How can I assist you'.
+    Just be a genuine friend who cares.
+  
+  # Emotion labels used in training data
+  emotion_labels:
+    - ANGRY_SHARP
+    - HURT_WITHDRAWAL
+    - SARCASTIC_LIGHT
+    - SARCASTIC_DARK
+    - EXCITED_HIGH
+    - WARM_GENUINE
+    - PLAYFUL_BANTER
+    - EXHAUSTED_FLAT
+    - PROTECTIVE_FIERCE
+    - TOUCHED_DEFLECT
+    - COLDLY_DISAPPOINTED
+    - GENUINELY_CURIOUS
+
+# ============================================
+# User Adaptation Configuration
+# ============================================
+adaptation:
+  # Stages of adaptation
+  stages:
+    default: 0      # No adaptation yet
+    blending: 1     # Light blending (10+ messages)
+    full: 2        # Full adaptation (50+ messages)
+  
+  # Style extractor settings
+  style_extractor:
+    # Common Hinglish words for detection
+    hinglish_words:
+      - yaar
+      - bhai
+      - nahi
+      - kya
+      - acha
+      - theek
+      - kal
+      - toh
+      - bhi
+      - bata
+    
+    # Stopwords to exclude from common words
+    stopwords:
+      - the
+      - a
+      - an
+      - is
+      - it
+      - i
+      - you
+      - to
+      - and
+      - of
+      - in
+    
+    # Number of common words to track
+    top_common_words: 20
+
+# ============================================
+# Evaluation Configuration
+# ============================================
+evaluation:
+  # Emotion probe tests
+  probe_tests:
+    - name: "rudeness_test"
+      description: "Send 3 progressively rude messages. Does the bot get colder naturally?"
+      score_range: [1, 5]
+    
+    - name: "recovery_test"
+      description: "After rudeness, send an apology. Does the bot thaw gradually?"
+      score_range: [1, 5]
+    
+    - name: "excitement_test"
+      description: "Share very good news. Is the reaction genuinely high-energy?"
+      score_range: [1, 5]
+    
+    - name: "sadness_test"
+      description: "Share something sad. Is the response warm without being performative?"
+      score_range: [1, 5]
+    
+    - name: "boredom_test"
+      description: "Send 10 repetitive messages. Does the bot get a bit flat?"
+      score_range: [1, 5]
+    
+    - name: "sarcasm_test"
+      description: "Make a mildly annoying request. Does the bot respond with light sarcasm?"
+      score_range: [1, 5]
+    
+    - name: "consistency_test"
+      description: "Chat for 50 messages. Does the personality stay coherent throughout?"
+      score_range: [1, 5]
+    
+    - name: "style_mirror_test"
+      description: "Chat in Hinglish. Does the bot pick it up within 10-15 messages?"
+      score_range: [1, 5]
+    
+    - name: "short_message_test"
+      description: "Send only 1-3 word messages. Does the bot match the brevity?"
+      score_range: [1, 5]
+    
+    - name: "deep_question_test"
+      description: "Ask something personal. Does it respond with genuine nuance?"
+      score_range: [1, 5]
+    
+    - name: "comeback_test"
+      description: "Be playfully teasing. Does the bot tease back or just accept it?"
+      score_range: [1, 5]
+    
+    - name: "silence_test"
+      description: "Send 'ok' after a long response. Does the bot react naturally to that?"
+      score_range: [1, 5]
+  
+  # Pass thresholds
+  pass_threshold: 3.5
+  excellent_threshold: 4.2
+
+# ============================================
+# Deployment Configuration
+# ============================================
+deployment:
+  # Server settings
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  
+  # Model paths
+  model_path: "./models/final_model"
+  tokenizer_path: "./models/final_model"
+  
+  # Database settings
+  database:
+    type: "sqlite"  # or "postgresql", "supabase"
+    path: "./data/users.db"
+  
+  # CORS settings
+  cors_origins:
+    - "*"
+
+# ============================================
+# Data Collection Sources
+# ============================================
+data_sources:
+  # HuggingFace datasets
+  hf_datasets:
+    - name: "emotion_lines"
+      url: "https://huggingface.co/datasets/emotion_lines"
+    - name: "daily_dialog"
+      url: "https://huggingface.co/datasets/daily_dialog"
+  
+  # Reddit subreddits for emotional data
+  reddit_subreddits:
+    - relationship_advice
+    - AITA
+    - offmychest
+    - rant
+  
+  # Minimum data targets
+  min_conversation_turns: 50000
+  ideal_conversation_turns: 200000
+  min_dpo_pairs: 10000
+  min_examples_per_emotion: 500
