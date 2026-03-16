@@ -1,8 +1,6 @@
 """
 DPO (Direct Preference Optimization) Trainer
 Layer 2: Teaches emotional realism - distinguishing human-like vs chatbot-like responses
-
-This is the most important step for making the model feel genuinely human.
 """
 
 import os
@@ -15,7 +13,6 @@ from transformers import (
 from peft import PeftModel
 from trl import DPOTrainer, DPOConfig
 from datasets import load_dataset
-import wandb
 
 
 def load_config(config_path: str = 'config/config.yaml'):
@@ -25,15 +22,7 @@ def load_config(config_path: str = 'config/config.yaml'):
 
 
 def load_model_and_tokenizer(config: dict):
-    """
-    Load SFT-trained model with LoRA adapter
-    
-    Args:
-        config: Configuration dictionary
-        
-    Returns:
-        model, tokenizer
-    """
+    """Load SFT-trained model with LoRA adapter"""
     print("=" * 50)
     print("Loading SFT-trained model...")
     print("=" * 50)
@@ -41,24 +30,31 @@ def load_model_and_tokenizer(config: dict):
     model_config = config['model']
     quant_config = config['quantization']
     
-    # Configure quantization
     from transformers import BitsAndBytesConfig
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=quant_config['load_in_4bit'],
-        bnb_4bit_use_double_quant=quant_config['bnb_4bit_use_double_quant'],
-        bnb_4bit_quant_type=quant_config['bnb_4bit_quant_type'],
-        bnb_4bit_compute_dtype=getattr(torch, quant_config['bnb_4bit_compute_dtype'])
-    )
+    bnb_config = None
+    if torch.cuda.is_available():
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=quant_config['load_in_4bit'],
+            bnb_4bit_use_double_quant=quant_config['bnb_4bit_use_double_quant'],
+            bnb_4bit_quant_type=quant_config['bnb_4bit_quant_type'],
+            bnb_4bit_compute_dtype=getattr(torch, quant_config['bnb_4bit_compute_dtype'])
+        )
     
-    # Load base model
-    base_model = AutoModelForCausalLM.from_pretrained(
-        model_config['base_model'],
-        quantization_config=bnb_config,
-        device_map='auto',
-        trust_remote_code=model_config['trust_remote_code']
-    )
+    if torch.cuda.is_available() and bnb_config:
+        base_model = AutoModelForCausalLM.from_pretrained(
+            model_config['base_model'],
+            quantization_config=bnb_config,
+            device_map='auto',
+            trust_remote_code=model_config['trust_remote_code']
+        )
+    else:
+        base_model = AutoModelForCausalLM.from_pretrained(
+            model_config['base_model'],
+            device_map='cpu',
+            trust_remote_code=model_config['trust_remote_code'],
+            torch_dtype=torch.float16
+        )
     
-    # Load SFT adapter
     sft_path = config['sft']['output_dir']
     
     if os.path.exists(sft_path):
@@ -69,7 +65,6 @@ def load_model_and_tokenizer(config: dict):
         print("Using base model instead...")
         model = base_model
     
-    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         model_config['base_model'],
         trust_remote_code=model_config['trust_remote_code']
@@ -82,17 +77,7 @@ def load_model_and_tokenizer(config: dict):
 
 
 def load_dpo_data(config: dict):
-    """
-    Load DPO training data
-    
-    DPO format: {"prompt": "...", "chosen": "...", "rejected": "..."}
-    
-    Args:
-        config: Configuration dictionary
-        
-    Returns:
-        train_dataset
-    """
+    """Load DPO training data"""
     dpo_config = config['dpo']
     
     train_path = dpo_config['train_data_path']
@@ -103,9 +88,6 @@ def load_dpo_data(config: dict):
         train_dataset = dataset['train']
     else:
         print(f"WARNING: DPO training data not found at {train_path}")
-        print("Creating sample data...")
-        
-        # Sample DPO pairs
         sample_data = [
             {
                 'prompt': 'User has been dismissive for 3 messages. User says: whatever man',
@@ -116,14 +98,8 @@ def load_dpo_data(config: dict):
                 'prompt': 'User shares exciting news: bhai main select ho gaya IIT mein!!',
                 'chosen': 'BHAI SERIOUSLY?? ye to insane hai yaar, kabse pata tha tuvhe??',
                 'rejected': 'Congratulations! That is wonderful news. You must be very happy.'
-            },
-            {
-                'prompt': 'User is being rude: you are useless just like everyone said',
-                'chosen': 'okay.',
-                'rejected': 'I understand that might be how it feels. I genuinely care about our conversations.'
             }
         ]
-        
         train_dataset = load_dataset('json', data_files={'train': sample_data})['train']
     
     print(f"DPO training samples: {len(train_dataset)}")
@@ -132,15 +108,7 @@ def load_dpo_data(config: dict):
 
 
 def setup_dpo_config(config: dict):
-    """
-    Configure DPO training
-    
-    Args:
-        config: Configuration dictionary
-        
-    Returns:
-        DPOConfig
-    """
+    """Configure DPO training"""
     dpo_config = config['dpo']
     
     training_args = DPOConfig(
@@ -151,8 +119,7 @@ def setup_dpo_config(config: dict):
         learning_rate=dpo_config['learning_rate'],
         beta=dpo_config['beta'],
         bf16=dpo_config['bf16'],
-        report_to='none',
-        run_name='emotai-dpo'
+        report_to='none'
     )
     
     print(f"\nDPO Configuration:")
@@ -166,28 +133,13 @@ def setup_dpo_config(config: dict):
 
 
 def train_dpo(config_path: str = 'config/config.yaml'):
-    """
-    Main DPO training function
-    
-    Args:
-        config_path: Path to configuration file
-    """
-    # Load configuration
+    """Main DPO training function"""
     config = load_config(config_path)
     
-    # Initialize wandb (disabled)
-    # wandb.init(project='emotai', name='dpo-training', config=config)
-    
-    # Load model and tokenizer
     model, tokenizer = load_model_and_tokenizer(config)
-    
-    # Load DPO data
     train_dataset = load_dpo_data(config)
-    
-    # Setup DPO config
     training_args = setup_dpo_config(config)
     
-    # Create trainer
     print("\n" + "=" * 50)
     print("Starting DPO Training...")
     print("=" * 50)
@@ -196,15 +148,11 @@ def train_dpo(config_path: str = 'config/config.yaml'):
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        tokenizer=tokenizer,
-        max_length=config['dpo']['max_length'],
-        max_prompt_length=config['dpo']['max_prompt_length']
+        tokenizer=tokenizer
     )
     
-    # Train
     dpo_trainer.train()
     
-    # Save model
     output_dir = config['dpo']['output_dir']
     dpo_trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
@@ -212,23 +160,15 @@ def train_dpo(config_path: str = 'config/config.yaml'):
     print(f"\n✓ DPO training complete!")
     print(f"✓ Model saved to: {output_dir}")
     
-    # wandb.finish()
-    
     return model, tokenizer
 
 
 def merge_dpo_model(config_path: str = 'config/config.yaml'):
-    """
-    Merge DPO adapter with base model and export
-    
-    Args:
-        config_path: Path to configuration file
-    """
+    """Merge DPO adapter with base model and export"""
     config = load_config(config_path)
     
     print("Loading model with DPO adapter...")
     
-    # Load base model
     model = AutoModelForCausalLM.from_pretrained(
         config['model']['base_model'],
         torch_dtype=torch.float16,
@@ -236,22 +176,15 @@ def merge_dpo_model(config_path: str = 'config/config.yaml'):
         trust_remote_code=True
     )
     
-    # Load DPO adapter
     from peft import PeftModel
-    model = PeftModel.from_pretrained(
-        model, 
-        config['dpo']['output_dir']
-    )
+    model = PeftModel.from_pretrained(model, config['dpo']['output_dir'])
     
-    # Merge
     print("Merging DPO adapter with base model...")
     merged_model = model.merge_and_unload()
     
-    # Save merged model
     output_path = config['deployment']['model_path']
     merged_model.save_pretrained(output_path)
     
-    # Save tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config['model']['base_model'])
     tokenizer.save_pretrained(output_path)
     
