@@ -117,13 +117,14 @@ def load_training_data(config: dict):
         val_dataset = dataset.get('validation')
     else:
         print(f"WARNING: Training data not found at {train_path}")
-        train_dataset = load_dataset('json', data_files=[{
+        from datasets import Dataset
+        train_dataset = Dataset.from_list([{
             'messages': [
                 {'role': 'system', 'content': 'You are Arjun.'},
                 {'role': 'user', 'content': 'Hello'},
                 {'role': 'assistant', 'content': 'Hi there!'}
             ]
-        }])['train']
+        }])
         val_dataset = None
     
     print(f"Training samples: {len(train_dataset)}")
