@@ -183,9 +183,7 @@ def train_sft(config_path: str = 'config/config.yaml'):
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        peft_config=peft_config,
-        tokenizer=tokenizer,
-        max_seq_length=config['sft']['max_seq_length']
+        peft_config=peft_config
     )
     
     trainer.train()
